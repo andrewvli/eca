@@ -6,6 +6,7 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
 IMPORTABLE EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/vehicles/protos/bmw/BmwX5.proto"
 IMPORTABLE EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/toys/protos/RubberDuck.proto"
+IMPORTABLE EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/panels/protos/Panel.proto"
 
 WorldInfo {
   info [
@@ -413,7 +414,7 @@ RubberDuck {
   scale 30
 }
 RubberDuck {
-  translation -21.03009 25.25770 0.3
+  translation -21.03009 25.2577 0.3
   name "rubber duck(4)"
   scale 30
 }
@@ -466,4 +467,124 @@ RubberDuck {
   translation -12.99807 -19.34637 0.3
   name "rubber duck(14)"
   scale 30
+}
+Panel {
+  translation 5 20 0.3
+  rotation 0 0 1 1.31
+  size 0.5 4 4
+  name "panel"
+}
+Panel {
+  translation 45.91922 -32.78138 0.3
+  rotation 0 0 1 1.43450
+  size 0.5 4 4
+  name "panel(1)"
+}
+Panel {
+  translation -37.98325 42.81642 0.3
+  rotation 0 0 1 6.15919
+  size 0.5 4 4
+  name "panel(2)"
+}
+Panel {
+  translation 45.36488 11.70880 0.3
+  rotation 0 0 1 5.75377
+  size 0.5 4 4
+  name "panel(3)"
+}
+Panel {
+  translation -20.56848 5.03662 0.3
+  rotation 0 0 1 6.19019
+  size 0.5 4 4
+  name "panel(4)"
+}
+Panel {
+  translation 17.73266 -43.04580 0.3
+  rotation 0 0 1 5.15404
+  size 0.5 4 4
+  name "panel(5)"
+}
+Panel {
+  translation -29.55494 -19.77093 0.3
+  rotation 0 0 1 6.19083
+  size 0.5 4 4
+  name "panel(6)"
+}
+Panel {
+  translation 21.89201 20.50366 0.3
+  rotation 0 0 1 0.27648
+  size 0.5 4 4
+  name "panel(7)"
+}
+Panel {
+  translation 40.41632 52.73614 0.3
+  rotation 0 0 1 5.99515
+  size 0.5 4 4
+  name "panel(8)"
+}
+Panel {
+  translation 31.20178 1.94475 0.3
+  rotation 0 0 1 5.46116
+  size 0.5 4 4
+  name "panel(9)"
+}
+Panel {
+  translation 44.25780 31.60555 0.3
+  rotation 0 0 1 1.96279
+  size 0.5 4 4
+  name "panel(10)"
+}
+Panel {
+  translation -15.65707 -41.24891 0.3
+  rotation 0 0 1 5.86414
+  size 0.5 4 4
+  name "panel(11)"
+}
+Panel {
+  translation -4.31770 -50.09899 0.3
+  rotation 0 0 1 5.77942
+  size 0.5 4 4
+  name "panel(12)"
+}
+Panel {
+  translation 51.70232 44.83913 0.3
+  rotation 0 0 1 6.26023
+  size 0.5 4 4
+  name "panel(13)"
+}
+Panel {
+  translation 7.39819 -29.95105 0.3
+  rotation 0 0 1 4.84454
+  size 0.5 4 4
+  name "panel(14)"
+}
+Panel {
+  translation -42.52831 -37.77360 0.3
+  rotation 0 0 1 0.42044
+  size 0.5 4 4
+  name "panel(15)"
+}
+Panel {
+  translation 52.56197 53.67306 0.3
+  rotation 0 0 1 0.68482
+  size 0.5 4 4
+  name "panel(16)"
+}
+Panel {
+  translation -46.16942 38.47984 0.3
+  rotation 0 0 1 4.80757
+  size 0.5 4 4
+  name "panel(17)"
+}
+Panel {
+  translation 33.27323 27.13441 0.3
+  rotation 0 0 1 4.96766
+  size 0.5 4 4
+  name "panel(18)"
+}
+Panel {
+  translation -9.47567 30.66812 0.3
+  rotation 0 0 1 2.38563
+  size 0.5 4 4
+  name "panel(19)"
 }
