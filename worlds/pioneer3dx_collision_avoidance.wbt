@@ -1,0 +1,168 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/factory/containers/protos/CardboardBox.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/factory/containers/protos/WoodenBox.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+IMPORTABLE EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/vehicles/protos/bmw/BmwX5.proto"
+
+WorldInfo {
+  info [
+    "Pioneer 3DX (Adept Mobile Robots)"
+    "This two-wheel, two-motor differential drive robot has in addition a rear caster wheel"
+    "It is programmed to perform a simple obstacle avoidance behavior based on the values sensed by its 16 sonars"
+  ]
+  title "Pioneer 3-DX with blinking LEDs moving according to a Braitenberg rule"
+  basicTimeStep 8
+}
+Viewpoint {
+  fieldOfView 0.660595
+  orientation -0.32706919620120184 0.20070821277140402 0.9234402818928837 2.110490150856183
+  position 10.139242692725041 -18.371492704750974 15.884832971801027
+}
+TexturedBackground {
+}
+RectangleArena {
+  floorSize 120 120
+  floorTileSize 2 2
+  wallHeight 3
+}
+DEF BIG_DATA_COLLECTOR BmwX5 {
+  translation -0.613659 -0.0464224 0.0975
+  rotation 0 0 -1 5.12323
+  controller "autonomous_vehicle"
+  supervisor TRUE
+  sensorsSlotFront [
+    Camera {
+      translation 0.72 0 -0.05
+      children [
+        Pose {
+          translation -0.05 0 0
+          rotation 0 -1 0 1.5708
+          children [
+            Shape {
+              appearance PBRAppearance {
+                baseColor 0.8 0.8 0.8
+                roughness 1
+                metalness 0
+              }
+              geometry Cylinder {
+                height 0.1
+                radius 0.04
+              }
+            }
+          ]
+        }
+      ]
+      fieldOfView 1
+      width 128
+      recognition Recognition {
+        maxRange 50
+        maxObjects 10
+        occlusion 0
+      }
+    }
+    Radar {
+      translation 1 0 0.3
+      rotation 0 1 0 3.14159
+      name "front_radar"
+      maxRange 100
+    }
+    TouchSensor {
+      translation 1.05 0 0.25
+      name "touch_front_center"
+      boundingObject Box {
+        size 0.4 0.8 0.3
+      }
+    }
+    TouchSensor {
+      translation 1.05 0.4 0.25
+      name "touch_front_left"
+      boundingObject Box {
+        size 0.4 0.8 0.3
+      }
+    }
+    TouchSensor {
+      translation 1.05 -0.4 0.25
+      name "touch_front_right"
+      boundingObject Box {
+        size 0.4 0.8 0.3
+      }
+    }
+  ]
+  sensorsSlotRear [
+    TouchSensor {
+      translation -1.05 0 0.25
+      rotation 0 1 0 3.14159
+      name "touch_rear_center"
+      boundingObject Box {
+        size 0.4 0.8 0.3
+      }
+    }
+    TouchSensor {
+      translation -1.05 0.4 0.25
+      rotation 0 1 0 3.14159
+      name "touch_rear_left"
+      boundingObject Box {
+        size 0.4 0.8 0.3
+      }
+    }
+    TouchSensor {
+      translation -1.05 -0.4 0.25
+      rotation 0 1 0 3.14159
+      name "touch_rear_right"
+      boundingObject Box {
+        size 0.4 0.8 0.3
+      }
+    }
+  ]
+  sensorsSlotTop [
+    Lidar {
+      translation 0 0 1.7
+      rotation 0 1 0 3.14159
+      name "roof_lidar"
+      horizontalResolution 1024
+      fieldOfView 6.28319
+      numberOfLayers 16
+      maxRange 100
+    }
+  ]
+  sensorsSlotCenter [
+    GPS {
+    }
+    Gyro {
+    }
+    InertialUnit {
+      name "imu"
+    }
+    Display {
+      width 200
+      height 150
+    }
+  ]
+}
+CardboardBox {
+  translation -0.201269 4.94642 0.3
+}
+CardboardBox {
+  translation 0.225428 -5.08162 0.3
+  name "cardboard box(1)"
+}
+WoodenBox {
+  translation 4.01933 -3.31136 0.3
+}
+WoodenBox {
+  translation 3.98789 3.08066 0.3
+  name "wooden box(1)"
+}
+WoodenBox {
+  translation -4.22157 -3.54663 0.3
+  name "wooden box(2)"
+}
+WoodenBox {
+  translation -4.21065 2.89465 0.3
+  name "wooden box(3)"
+}
+TexturedBackgroundLight {
+}

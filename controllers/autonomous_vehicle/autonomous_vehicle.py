@@ -20,22 +20,31 @@ speed = 0.0
 steering_angle = 0.0
 
 # Starting position for reset
-START_POS_X = -45.0
-START_POS_Y = 45.88
-START_POS_Z = 0.4
+START_POS_X = -0.613659
+START_POS_Y = -0.0464224
+START_POS_Z = 0.0975
 START_ROT_X = 0.0
 START_ROT_Y = 0.0
-START_ROT_Z = 1.0
-START_ROT_ANGLE = 3.14159
+START_ROT_Z = -1
+START_ROT_ANGLE = 5.12323
+SPEED = 50.0
+
+
+# World boundaries (based on city_traffic.wbt analysis)
+WORLD_BOUNDS_MIN_X = -120.0
+WORLD_BOUNDS_MAX_X = 180.0
+WORLD_BOUNDS_MIN_Z = -200.0
+WORLD_BOUNDS_MAX_Z = 270.0
 
 # Collision reset delay (in seconds)
-COLLISION_RESET_DELAY = 5.0
+COLLISION_RESET_DELAY = 1.0
 
 # Static variables for collision reset
 collision_reset_pending = False
 collision_start_time = -1.0
 
 # Supervisor (will be initialized in main)
+supervisor = None
 is_supervisor = False
 
 # =====================================================================
@@ -114,9 +123,11 @@ def compute_gps_speed():
 
 def reset_vehicle_position():
     """
-    Reset the vehicle to the starting position.
+    Reset the vehicle to the starting position with zero velocity.
+    Simple approach: just set position, rotation, and velocity.
     """
-    global supervisor, is_supervisor
+    global supervisor, is_supervisor, speed, steering_angle
+    
     if not is_supervisor or not supervisor:
         print("Warning: Cannot reset position - controller is not a Supervisor")
         return
@@ -126,22 +137,48 @@ def reset_vehicle_position():
         print("Warning: Could not get self node for reset")
         return
 
+    # # Stop the vehicle first
+    # driver.setCruisingSpeed(0.0)
+    # driver.setSteeringAngle(0.0)
+    # speed = 0.0
+    # steering_angle = 0.0
+
+    # # Reset velocity to zero (linear and angular)
+    # self_node.setVelocity([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    
+    # # Resume driving
+    # set_speed(SPEED)
+
+
+    # Reset position and rotation
     translation_field = self_node.getField("translation")
     rotation_field = self_node.getField("rotation")
 
-    if translation_field:
-        translation = [START_POS_X, START_POS_Y, START_POS_Z]
-        translation_field.setSFVec3f(translation)
-
     if rotation_field:
-        rotation = [START_ROT_X, START_ROT_Y, START_ROT_Z, START_ROT_ANGLE]
-        rotation_field.setSFRotation(rotation)
+        rotation_field.setSFRotation([START_ROT_X, START_ROT_Y, START_ROT_Z, START_ROT_ANGLE])
 
-    # Reset velocity to zero
-    zero_velocity = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    self_node.setVelocity(zero_velocity)
+    if translation_field:
+        translation_field.setSFVec3f([START_POS_X, START_POS_Y, START_POS_Z])
 
     print("Vehicle reset to starting position")
+
+
+def check_world_bounds():
+    """
+    Check if vehicle is within world boundaries and reset if outside.
+    """
+    if not has_gps or not gps:
+        return False
+    
+    coords = gps.getValues()
+    x, z = coords[X], coords[Z]
+    
+    if (x < WORLD_BOUNDS_MIN_X or x > WORLD_BOUNDS_MAX_X or 
+        z < WORLD_BOUNDS_MIN_Z or z > WORLD_BOUNDS_MAX_Z):
+        print(f"Vehicle out of bounds! Position: ({x:.2f}, {z:.2f})")
+        reset_vehicle_position()
+        return True
+    return False
 
 
 def check_collisions(sim_time):
@@ -150,7 +187,6 @@ def check_collisions(sim_time):
     """
     global collision_reset_pending, collision_start_time
     
-    # Check if any TouchSensor detected collision
     collision_detected = False
     touch_sensor_names = [
         "touch_front_center", "touch_front_left", "touch_front_right",
@@ -164,16 +200,14 @@ def check_collisions(sim_time):
     for i in range(6):
         if touch_sensors[i]:
             value = touch_sensors[i].getValue()
-            if value > 0.5:  # safer than >=1.0
+            if value > 0.5:
                 print(f"COLLISION DETECTED: {touch_sensor_names[i]} = {value:.6f}")
                 collision_detected = True
                 if not collision_reset_pending:
-                    # Start the collision timer
                     collision_reset_pending = True
                     collision_start_time = sim_time
                     print(f"Collision detected, will reset in {COLLISION_RESET_DELAY:.1f} seconds...")
 
-    # Reset logic when collision is detected
     if collision_reset_pending and collision_start_time >= 0.0:
         elapsed = sim_time - collision_start_time
         if elapsed >= COLLISION_RESET_DELAY:
@@ -181,7 +215,6 @@ def check_collisions(sim_time):
             collision_reset_pending = False
             collision_start_time = -1.0
 
-    # Reset the flag when no collision is detected
     if not collision_detected and not collision_reset_pending:
         collision_start_time = -1.0
 
@@ -191,7 +224,7 @@ def check_collisions(sim_time):
 # =====================================================================
 robot = Robot()
 driver = Driver()
-# Check if robot is a supervisor (Supervisor is a subclass of Robot)
+# Check if robot is a supervisor
 try:
     supervisor = Supervisor()
     is_supervisor = True
@@ -205,8 +238,6 @@ for j in range(robot.getNumberOfDevices()):
     name = device.getName()
     if name == "display":
         enable_display = True
-    elif name == "gps":
-        has_gps = True
 
 # Initialize camera
 camera = robot.getDevice("camera")
@@ -218,16 +249,11 @@ camera_fov = camera.getFov()
 camera.recognitionEnable(TIME_STEP)
 print(f"Camera initialized: {camera_width}x{camera_height}, FOV={camera_fov:.2f} (recognition enabled)")
 
-# initialize gps
-if has_gps:
-    gps = robot.getDevice("gps")
-    if gps:
-        gps.enable(TIME_STEP)
-        print("GPS initialized")
-    else:
-        print("Warning: GPS device not found")
-else:
-    print("GPS not available")
+# Initialize GPS (always available in this world)
+gps = robot.getDevice("gps")
+gps.enable(TIME_STEP)
+has_gps = True
+print("GPS initialized")
 
 # initialize display (speedometer)
 if enable_display:
@@ -327,7 +353,9 @@ driver.setHazardFlashers(True)
 driver.setDippedBeams(True)
 driver.setAntifogLights(True)
 driver.setWiperMode(Driver.SLOW)
-set_speed(50.0)  # Set initial speed to 50 km/h
+set_speed(SPEED)  # Set initial speed to 50 km/h
+
+
 
 # =====================================================================
 # MAIN CONTROLLER LOOP
@@ -339,6 +367,8 @@ while driver.step() != -1:
         # update stuff
         if has_gps:
             compute_gps_speed()
+            # Check if vehicle is within world boundaries
+            check_world_bounds()
         if enable_display:
             update_display()
 
