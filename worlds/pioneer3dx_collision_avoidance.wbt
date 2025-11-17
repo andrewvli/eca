@@ -20,7 +20,7 @@ WorldInfo {
 Viewpoint {
   fieldOfView 0.660595
   orientation -0.32706919620120184 0.20070821277140402 0.9234402818928837 2.110490150856183
-  position 103.30468394051147 -201.7780184075482 182.50889923355118
+  position 45.06346001776613 -87.12369606135157 78.34592394898391
 }
 TexturedBackground {
 }
@@ -144,11 +144,11 @@ DEF BIG_DATA_COLLECTOR BmwX5 {
   ]
 }
 WoodenBox {
-  translation 4.01933 -3.31136 0.3
+  translation 4.01933 -10 0.3
   size 2 1 3
 }
 WoodenBox {
-  translation 3.98789 3.08066 0.3
+  translation 10 3.08066 0.3
   name "wooden box(1)"
   size 2.4 1.2 2.6
 }
@@ -472,119 +472,118 @@ Panel {
   translation 5 20 0.3
   rotation 0 0 1 1.31
   size 0.5 4 4
-  name "panel"
 }
 Panel {
   translation 45.91922 -32.78138 0.3
-  rotation 0 0 1 1.43450
-  size 0.5 4 4
+  rotation 0 0 1 1.4345
   name "panel(1)"
+  size 0.5 4 4
 }
 Panel {
   translation -37.98325 42.81642 0.3
   rotation 0 0 1 6.15919
-  size 0.5 4 4
   name "panel(2)"
+  size 0.5 4 4
 }
 Panel {
-  translation 45.36488 11.70880 0.3
+  translation 45.36488 11.7088 0.3
   rotation 0 0 1 5.75377
-  size 0.5 4 4
   name "panel(3)"
+  size 0.5 4 4
 }
 Panel {
   translation -20.56848 5.03662 0.3
   rotation 0 0 1 6.19019
-  size 0.5 4 4
   name "panel(4)"
+  size 0.5 4 4
 }
 Panel {
-  translation 17.73266 -43.04580 0.3
+  translation 17.73266 -43.0458 0.3
   rotation 0 0 1 5.15404
-  size 0.5 4 4
   name "panel(5)"
+  size 0.5 4 4
 }
 Panel {
   translation -29.55494 -19.77093 0.3
   rotation 0 0 1 6.19083
-  size 0.5 4 4
   name "panel(6)"
+  size 0.5 4 4
 }
 Panel {
   translation 21.89201 20.50366 0.3
   rotation 0 0 1 0.27648
-  size 0.5 4 4
   name "panel(7)"
+  size 0.5 4 4
 }
 Panel {
   translation 40.41632 52.73614 0.3
   rotation 0 0 1 5.99515
-  size 0.5 4 4
   name "panel(8)"
+  size 0.5 4 4
 }
 Panel {
   translation 31.20178 1.94475 0.3
   rotation 0 0 1 5.46116
-  size 0.5 4 4
   name "panel(9)"
+  size 0.5 4 4
 }
 Panel {
-  translation 44.25780 31.60555 0.3
+  translation 44.2578 31.60555 0.3
   rotation 0 0 1 1.96279
-  size 0.5 4 4
   name "panel(10)"
+  size 0.5 4 4
 }
 Panel {
   translation -15.65707 -41.24891 0.3
   rotation 0 0 1 5.86414
-  size 0.5 4 4
   name "panel(11)"
+  size 0.5 4 4
 }
 Panel {
-  translation -4.31770 -50.09899 0.3
+  translation -4.3177 -50.09899 0.3
   rotation 0 0 1 5.77942
-  size 0.5 4 4
   name "panel(12)"
+  size 0.5 4 4
 }
 Panel {
   translation 51.70232 44.83913 0.3
   rotation 0 0 1 6.26023
-  size 0.5 4 4
   name "panel(13)"
+  size 0.5 4 4
 }
 Panel {
   translation 7.39819 -29.95105 0.3
   rotation 0 0 1 4.84454
-  size 0.5 4 4
   name "panel(14)"
+  size 0.5 4 4
 }
 Panel {
-  translation -42.52831 -37.77360 0.3
+  translation -42.52831 -37.7736 0.3
   rotation 0 0 1 0.42044
-  size 0.5 4 4
   name "panel(15)"
+  size 0.5 4 4
 }
 Panel {
   translation 52.56197 53.67306 0.3
   rotation 0 0 1 0.68482
-  size 0.5 4 4
   name "panel(16)"
+  size 0.5 4 4
 }
 Panel {
   translation -46.16942 38.47984 0.3
   rotation 0 0 1 4.80757
-  size 0.5 4 4
   name "panel(17)"
+  size 0.5 4 4
 }
 Panel {
   translation 33.27323 27.13441 0.3
   rotation 0 0 1 4.96766
-  size 0.5 4 4
   name "panel(18)"
+  size 0.5 4 4
 }
 Panel {
   translation -9.47567 30.66812 0.3
   rotation 0 0 1 2.38563
-  size 0.5 4 4
   name "panel(19)"
+  size 0.5 4 4
 }
