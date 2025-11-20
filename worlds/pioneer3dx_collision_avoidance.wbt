@@ -15,7 +15,7 @@ WorldInfo {
     "It is programmed to perform a simple obstacle avoidance behavior based on the values sensed by its 16 sonars"
   ]
   title "Pioneer 3-DX with blinking LEDs moving according to a Braitenberg rule"
-  basicTimeStep 8
+  basicTimeStep 16
 }
 Viewpoint {
   fieldOfView 0.660595
@@ -123,9 +123,9 @@ DEF BIG_DATA_COLLECTOR BmwX5 {
       translation 0 0 1.7
       rotation 0 1 0 3.14159
       name "roof_lidar"
-      horizontalResolution 1024
+      horizontalResolution 512
       fieldOfView 6.28319
-      numberOfLayers 16
+      numberOfLayers 8
       maxRange 100
     }
   ]

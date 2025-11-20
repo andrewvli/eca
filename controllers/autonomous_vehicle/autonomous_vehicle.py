@@ -27,16 +27,9 @@ START_ROT_Z = -1
 START_ROT_ANGLE = 5.12323
 SPEED = 25.0
 
-# Collision reset delay (in seconds)
-COLLISION_RESET_DELAY = 1.0
-
 # GPS stuck detection
-GPS_STUCK_TIMEOUT = 3.0  # Reset if position doesn't change in 3 seconds
+GPS_STUCK_TIMEOUT = 5.0  # Reset if position doesn't change in 3 seconds
 GPS_POSITION_THRESHOLD = 0.5  # Minimum distance change (in meters) to consider movement
-
-# Static variables for collision reset
-collision_reset_pending = False
-collision_start_time = -1.0
 
 # Static variables for GPS stuck detection
 last_gps_position = None
@@ -56,8 +49,6 @@ def set_speed(kmh):
     """
     if kmh > 250.0:
         kmh = 250.0
-
-    print(f"setting speed to {kmh} km/h")
     driver.setCruisingSpeed(kmh)
 
 
@@ -152,7 +143,7 @@ def check_gps_stuck(sim_time):
     time_since_last_move = sim_time - last_gps_position_time
     if time_since_last_move >= GPS_STUCK_TIMEOUT:
         if not gps_stuck_reset_pending:
-            print(f"Vehicle stuck detected! Position unchanged for {time_since_last_move:.2f} seconds. Resetting...")
+            # print(f"Vehicle stuck detected! Position unchanged for {time_since_last_move:.2f} seconds. Resetting...")
             gps_stuck_reset_pending = True
             reset_vehicle_position()
             set_speed(SPEED)
@@ -200,19 +191,14 @@ def reset_vehicle_position():
         translation_field.setSFVec3f([START_POS_X, START_POS_Y, START_POS_Z])
 
 
-    # Set speed back to constant SPEED (Q-learning only controls steering)
-    # set_speed(SPEED)
-
-    print("Vehicle reset to starting position (zero velocity, zero steering, speed reset to constant)")
+    # print("Vehicle reset to starting position (zero velocity, zero steering, speed reset to constant)")
 
 
 def check_collisions(sim_time):
     """
-    Check for collisions and handle reset.
+    Check for collisions and handle reset immediately.
     Returns True if collision detected, False otherwise.
     """
-    global collision_reset_pending, collision_start_time
-    
     collision_detected = False
     touch_sensor_names = [
         "touch_front_center", "touch_front_left", "touch_front_right",
@@ -227,23 +213,12 @@ def check_collisions(sim_time):
         if touch_sensors[i]:
             value = touch_sensors[i].getValue()
             if value > 0.5:
-                print(f"COLLISION DETECTED: {touch_sensor_names[i]} = {value:.6f}")
+                # print(f"COLLISION DETECTED: {touch_sensor_names[i]} = {value:.6f}")
                 collision_detected = True
-                if not collision_reset_pending:
-                    collision_reset_pending = True
-                    collision_start_time = sim_time
-                    print(f"Collision detected, will reset in {COLLISION_RESET_DELAY:.1f} seconds...")
-
-    if collision_reset_pending and collision_start_time >= 0.0:
-        elapsed = sim_time - collision_start_time
-        if elapsed >= COLLISION_RESET_DELAY:
-            reset_vehicle_position()
-            set_speed(SPEED)
-            collision_reset_pending = False
-            collision_start_time = -1.0
-
-    if not collision_detected and not collision_reset_pending:
-        collision_start_time = -1.0
+                # Reset immediately on collision detection
+                reset_vehicle_position()
+                set_speed(SPEED)
+                break  # Reset once per collision detection cycle
     
     return collision_detected
 
@@ -596,6 +571,15 @@ class QLearningAgent:
         self.epsilon = EPSILON_START
         self.last_state = None
         self.last_action = None 
+        # Learning statistics
+        self.episode_count = 0
+        self.step_count = 0
+        self.total_reward = 0.0
+        self.episode_reward = 0.0
+        self.episode_steps = 0
+        self.q_updates_count = 0
+        self.explore_count = 0
+        self.exploit_count = 0
         self.load_q_table()
     
     def load_q_table(self):
@@ -644,10 +628,12 @@ class QLearningAgent:
         q_values = self.get_q_values(state)
         
         if random.random() < self.epsilon: # Explore random action
+            self.explore_count += 1
             steering = random.choice(STEERING_ACTIONS)
             return steering
         
         else: # Exploit best action
+            self.exploit_count += 1
             best_action = max(q_values.items(), key=lambda x: x[1])
             return best_action[0] 
     
@@ -661,8 +647,22 @@ class QLearningAgent:
         
         current_q = q_values[action]
         max_next_q = max(next_q_values.values())
+        new_q = current_q + ALPHA * (reward + GAMMA * max_next_q - current_q)
 
-        q_values[action] = current_q + ALPHA * (reward + GAMMA * max_next_q - current_q)
+        q_values[action] = new_q
+        self.q_updates_count += 1
+        self.episode_reward += reward
+        self.total_reward += reward
+        
+        # Print learning progress every N updates
+        if self.q_updates_count % 100 == 0:
+            avg_q = sum(q_values.values()) / len(q_values) if q_values else 0.0
+            max_q = max(q_values.values()) if q_values else 0.0
+            explore_rate = self.explore_count / (self.explore_count + self.exploit_count) * 100 if (self.explore_count + self.exploit_count) > 0 else 0.0
+            print(f"[Learning] Updates: {self.q_updates_count}, States: {len(self.q_table)}, "
+                  f"Epsilon: {self.epsilon:.4f}, Explore: {explore_rate:.1f}%, "
+                  f"Avg Q: {avg_q:.2f}, Max Q: {max_q:.2f}, "
+                  f"Q-change: {new_q - current_q:.3f}, Reward: {reward:.2f}")
     
     def decay_epsilon(self):
         """
@@ -827,7 +827,7 @@ while driver.step() != -1:
         if roof_lidar and front_radar:
             # Get current state (speed is constant, so not included in state)
             current_state = get_state(roof_lidar, front_radar, steering_angle, imu, camera) # S
-            
+
             # Extract sensor distances for reward calculation
             lidar_front, lidar_left, lidar_right = extract_lidar_features(roof_lidar)
             radar_distance = extract_radar_features(front_radar)
@@ -837,8 +837,8 @@ while driver.step() != -1:
                 reward = get_reward(collision_detected, lidar_front, lidar_left, lidar_right, radar_distance)
                 q_agent.update(q_agent.last_state, q_agent.last_action, reward, current_state)
             
-            # Select new action (unless collision reset is pending)
-            if not collision_reset_pending and not gps_stuck_reset_pending:
+            # Select new action (unless GPS stuck reset is pending)
+            if not gps_stuck_reset_pending and not collision_detected:
                 steering_angle_new = q_agent.select_action(current_state)  # Returns steering angle
                 
                 # Execute action - only steering, speed stays constant
@@ -848,19 +848,32 @@ while driver.step() != -1:
                 # Store state and action for next update
                 q_agent.last_state = current_state
                 q_agent.last_action = steering_angle_new  # Store steering angle
+                q_agent.episode_steps += 1
+                q_agent.step_count += 1
                 
                 # Decay exploration rate
                 q_agent.decay_epsilon()
             else:
                 # Reset Q-learning episode on collision or GPS stuck reset
+                if q_agent.episode_steps > 0:
+                    q_agent.episode_count += 1
+                    avg_episode_reward = q_agent.episode_reward / q_agent.episode_steps if q_agent.episode_steps > 0 else 0.0
+                    print(f"[Episode {q_agent.episode_count}] Steps: {q_agent.episode_steps}, "
+                          f"Total Reward: {q_agent.episode_reward:.2f}, Avg Reward/Step: {avg_episode_reward:.3f}")
                 q_agent.last_state = None
                 q_agent.last_action = None
+                q_agent.episode_reward = 0.0
+                q_agent.episode_steps = 0
             
             # Save Q-table periodically
             if sim_time - last_q_save_time >= Q_SAVE_INTERVAL:
                 q_agent.save_q_table()
                 last_q_save_time = sim_time
-                print(f"Epsilon: {q_agent.epsilon:.4f}, Q-table size: {len(q_agent.q_table)}")
+                explore_rate = q_agent.explore_count / (q_agent.explore_count + q_agent.exploit_count) * 100 if (q_agent.explore_count + q_agent.exploit_count) > 0 else 0.0
+                avg_reward = q_agent.total_reward / q_agent.q_updates_count if q_agent.q_updates_count > 0 else 0.0
+                print(f"[Periodic Save] Epsilon: {q_agent.epsilon:.4f}, Q-table size: {len(q_agent.q_table)}, "
+                      f"Episodes: {q_agent.episode_count}, Updates: {q_agent.q_updates_count}, "
+                      f"Explore rate: {explore_rate:.1f}%, Avg reward: {avg_reward:.3f}")
 
     i += 1
 
