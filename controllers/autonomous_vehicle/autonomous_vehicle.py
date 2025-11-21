@@ -1,4 +1,4 @@
-from controller import Robot, Camera, Display, GPS, InertialUnit, Lidar, Radar, TouchSensor, Supervisor
+from controller import Robot, Camera, Display, GPS, Lidar, TouchSensor, Supervisor
 from vehicle import Driver
 import math
 import random
@@ -6,6 +6,7 @@ import pickle
 import os
 import time
 import sys
+import random
 
 # Add parent directories to Python path so we can import constants and models
 # Webots runs controllers from their directory, so we need to go up two levels
@@ -33,7 +34,7 @@ supervisor = None
 is_supervisor = False
 
 
-speedometer_image = robot = driver = display = camera = gps = front_radar = imu = roof_lidar = None
+speedometer_image = robot = driver = display = camera = gps = roof_lidar = None
 touch_front_center = touch_front_left = touch_front_right = None
 touch_rear_center = touch_rear_left = touch_rear_right = None
 q_agent = None
@@ -56,24 +57,17 @@ def start_engine():
     driver.setWiperMode(Driver.SLOW)
     set_speed(SPEED)  # Set initial speed to 50 km/h
 
-def set_steering_angle(wheel_angle):
+def set_steering_angle(angle_adjustment):
     """
     Set the steering angle of the vehicle.
     - positive: turn right
     - negative: turn left
     """
     global steering_angle
-    # limit the difference with previous steering_angle
-    if wheel_angle - steering_angle > 0.1:
-        wheel_angle = steering_angle + 0.1
-    if wheel_angle - steering_angle < -0.1:
-        wheel_angle = steering_angle - 0.1
+    wheel_angle = steering_angle + angle_adjustment
+    wheel_angle = max(min(wheel_angle, MAX_ANGLE), MIN_ANGLE)
     steering_angle = wheel_angle
-    # limit range of the steering angle
-    if wheel_angle > 0.25:
-        wheel_angle = 0.25
-    elif wheel_angle < -0.25:
-        wheel_angle = -0.25
+    
     driver.setSteeringAngle(wheel_angle)
 
 def update_display():
@@ -162,6 +156,10 @@ def reset_vehicle_position():
     Completely resets position, rotation, velocity, speed, and steering.
     """
     global supervisor, is_supervisor, steering_angle
+
+    index = random.randint(0, 9)
+    respawn_pos = RESPAWN_CANDIDATES[index]
+    random_float = random.uniform(0, 6.28)
     
     if not is_supervisor or not supervisor:
         print("Warning: Cannot reset position - controller is not a Supervisor")
@@ -185,13 +183,11 @@ def reset_vehicle_position():
     rotation_field = self_node.getField("rotation")
 
     if rotation_field:
-        rotation_field.setSFRotation([START_ROT_X, START_ROT_Y, START_ROT_Z, START_ROT_ANGLE])
+        rotation_field.setSFRotation([START_ROT_X, START_ROT_Y, START_ROT_Z, random_float])
 
     if translation_field:
-        translation_field.setSFVec3f([START_POS_X, START_POS_Y, START_POS_Z])
+        translation_field.setSFVec3f([respawn_pos[0], respawn_pos[1], respawn_pos[2]])
 
-
-    # print("Vehicle reset to starting position (zero velocity, zero steering, speed reset to constant)")
 
 def check_collisions(sim_time):
     """
@@ -284,46 +280,6 @@ def extract_lidar_features(lidar_sensor):
     except Exception as e:
         print(f"Error extracting LIDAR features: {e}")
         return (100.0, 100.0, 100.0)
-
-
-def extract_radar_features(radar_sensor):
-    """
-    Extract target distance from front radar.
-    Returns: minimum target distance
-    """
-    if not radar_sensor:
-        return 100.0  # Max range if no radar
-    try:
-        targets = radar_sensor.getTargets()
-        if not targets or len(targets) == 0:
-            return 100.0
-        
-        # Get minimum distance from all targets
-        min_distance = min([target.distance for target in targets if target.distance > 0])
-        max_range = radar_sensor.getMaxRange()
-        return min(min_distance, max_range)
-    except Exception as e:
-        print(f"Error extracting radar features: {e}")
-        return 100.0
-
-
-def extract_imu_features(imu_sensor):
-    """
-    Extract orientation data from IMU.
-    Returns: (roll, pitch, yaw) in radians
-    """
-    if not imu_sensor:
-        return (0.0, 0.0, 0.0)
-   
-    rpy = imu_sensor.getRollPitchYaw()
-    
-    if rpy and len(rpy) >= 3:
-        roll = rpy[0] if not math.isnan(rpy[0]) else 0.0
-        pitch = rpy[1] if not math.isnan(rpy[1]) else 0.0
-        yaw = rpy[2] if not math.isnan(rpy[2]) else 0.0
-        return (roll, pitch, yaw)
-    
-    return (0.0, 0.0, 0.0)
 
 
 def extract_camera_features(camera_sensor):
@@ -422,25 +378,6 @@ def discretize_steering(steering_angle):
         return 10  # 0.25
 
 
-def discretize_angle(angle_rad, num_bins=8):
-    """
-    Discretize angle (in radians) into bins.
-    Normalizes angle to [-pi, pi] range and bins it.
-    """
-    # Normalize to [-pi, pi]
-    while angle_rad > math.pi:
-        angle_rad -= 2 * math.pi
-    while angle_rad < -math.pi:
-        angle_rad += 2 * math.pi
-    
-    # Bin into num_bins equally spaced bins
-    bin_size = 2 * math.pi / num_bins
-    bin_idx = int((angle_rad + math.pi) / bin_size)
-    # Clamp to valid range
-    bin_idx = max(0, min(num_bins - 1, bin_idx))
-    return bin_idx
-
-
 def discretize_camera_object_count(count, max_count=10):
     """
     Discretize camera object count.
@@ -468,43 +405,32 @@ def discretize_camera_position(position):
 #  DISCRETIZE END
 # ====================================
 
-def get_state(lidar_sensor, radar_sensor, current_steering, imu_sensor=None, camera_sensor=None):
+def get_state(lidar_sensor, current_steering, camera_sensor=None):
     """
     Extract and discretize current state from sensors.
-    Returns: state tuple (lidar_front_bin, lidar_left_bin, lidar_right_bin, radar_bin, steering_bin, 
-             imu_yaw_bin, camera_object_count_bin, camera_distance_bin, camera_pos_x_bin, camera_pos_z_bin)
+    Returns: state tuple (lidar_front_bin, lidar_left_bin, lidar_right_bin, steering_bin, 
+             camera_object_count_bin, camera_distance_bin, camera_pos_x_bin)
     """
     lidar_front, lidar_left, lidar_right = extract_lidar_features(lidar_sensor)
-    radar_distance = extract_radar_features(radar_sensor)
     
     lidar_front_bin = discretize_distance(lidar_front)
     lidar_left_bin = discretize_distance(lidar_left)
     lidar_right_bin = discretize_distance(lidar_right)
-    radar_bin = discretize_distance(radar_distance)
     steering_bin = discretize_steering(current_steering)
-    
-    # IMU features 
-    imu_yaw_bin = 0
-    if imu_sensor:
-        roll, pitch, yaw = extract_imu_features(imu_sensor)
-        imu_yaw_bin = discretize_angle(yaw, IMU_YAW_BINS)
-    
+
     # Camera features
     camera_object_count_bin = 0
     camera_distance_bin = 9  # Default to max distance bin
     camera_pos_x_bin = 2  # Default to center
-    camera_pos_z_bin = 2  # Default to center
     if camera_sensor:
         object_count, closest_distance, closest_pos_x, closest_pos_z = extract_camera_features(camera_sensor)
         camera_object_count_bin = discretize_camera_object_count(object_count, CAMERA_OBJECT_COUNT_BINS)
         camera_distance_bin = discretize_distance(closest_distance)
         camera_pos_x_bin = discretize_camera_position(closest_pos_x)
-        camera_pos_z_bin = discretize_camera_position(closest_pos_z)
     
-    return (lidar_front_bin, lidar_left_bin, lidar_right_bin, radar_bin, steering_bin,
-            imu_yaw_bin, camera_object_count_bin, camera_distance_bin, camera_pos_x_bin, camera_pos_z_bin)
+    return (lidar_front_bin, lidar_left_bin, lidar_right_bin, steering_bin, camera_object_count_bin, camera_distance_bin, camera_pos_x_bin)
 
-def get_reward(collision_detected, lidar_front=None, lidar_left=None, lidar_right=None, radar_distance=None):
+def get_reward(collision_detected, lidar_front=None, lidar_left=None, lidar_right=None):
     """
     Calculate reward based on collision status and distance from objects.
     - Collision: -1000
@@ -523,8 +449,6 @@ def get_reward(collision_detected, lidar_front=None, lidar_left=None, lidar_righ
         distances.append(lidar_left)
     if lidar_right is not None:
         distances.append(lidar_right)
-    if radar_distance is not None:
-        distances.append(radar_distance)
     
     if distances:
         min_distance = min(distances)
@@ -548,9 +472,9 @@ def init_scene_and_sensors():
     """
     returns all of the sensors so that they are usable
     """
-    global robot, driver, display, camera, gps, front_radar, imu, roof_lidar, supervisor, is_supervisor, enable_display, has_gps
+    global robot, driver, display, camera, gps, roof_lidar, supervisor, is_supervisor, enable_display, has_gps
     global touch_front_center, touch_front_left, touch_front_right, touch_rear_center, touch_rear_left, touch_rear_right
-    global q_agent
+    global q_agent, speedometer_image
     
     # Check if robot is a supervisor first
     try:
@@ -606,14 +530,6 @@ def init_scene_and_sensors():
     else:
         print("Display not available")
 
-    # Initialize Radar
-    front_radar = robot.getDevice("front_radar")
-    if front_radar:
-        front_radar.enable(TIME_STEP)
-        print("Radar initialized")
-    else:
-        print("Radar not available")
-
     # Initialize Touch Sensors
     touch_front_center = robot.getDevice("touch_front_center")
     touch_front_left = robot.getDevice("touch_front_left")
@@ -647,14 +563,6 @@ def init_scene_and_sensors():
     for i in range(6):
         if touch_sensors[i]:
             print(f"Touch sensor initialized: {touch_sensor_names[i]}")
-
-    # Initialize Inertial Unit (IMU)
-    imu = robot.getDevice("imu")
-    if imu:
-        imu.enable(TIME_STEP)
-        print("IMU initialized")
-    else:
-        print("IMU not available")
 
     # Initialize Roof Lidar
     roof_lidar = robot.getDevice("roof_lidar")
@@ -701,30 +609,29 @@ def main():
             collision_detected = check_collisions(sim_time)
             
             # Q-Learning collision avoidance
-            if roof_lidar and front_radar:
+            if roof_lidar:
                 # Get current state (speed is constant, so not included in state)
-                current_state = get_state(roof_lidar, front_radar, steering_angle, imu, camera) # S
+                current_state = get_state(roof_lidar, steering_angle, camera) # S
 
                 # Extract sensor distances for reward calculation
                 lidar_front, lidar_left, lidar_right = extract_lidar_features(roof_lidar)
-                radar_distance = extract_radar_features(front_radar)
                 
                 # If we have a previous state and action, update Q-table
                 if q_agent.last_state is not None and q_agent.last_action is not None:
-                    reward = get_reward(collision_detected, lidar_front, lidar_left, lidar_right, radar_distance)
+                    reward = get_reward(collision_detected, lidar_front, lidar_left, lidar_right)
                     q_agent.update(q_agent.last_state, q_agent.last_action, reward, current_state)
                 
                 # Select new action (unless GPS stuck reset is pending)
                 if not gps_stuck_reset_pending and not collision_detected:
-                    steering_angle_new = q_agent.select_action(current_state)  # Returns steering angle
+                    steering_angle_adjustment = q_agent.select_action(current_state)  # Returns steering angle
                     
                     # Execute action - only steering, speed stays constant
-                    set_steering_angle(steering_angle_new)
+                    set_steering_angle(steering_angle_adjustment)
                     # Speed remains constant at SPEED
                     
                     # Store state and action for next update
                     q_agent.last_state = current_state
-                    q_agent.last_action = steering_angle_new  # Store steering angle
+                    q_agent.last_action = steering_angle_adjustment  # Store steering angle
                     q_agent.episode_steps += 1
                     q_agent.step_count += 1
                     
@@ -755,7 +662,7 @@ def main():
         i += 1
 
     # Save Q-table on exit
-    if roof_lidar and front_radar:
+    if roof_lidar:
         q_agent.save_q_table()
         print("Final Q-table saved on exit")
 

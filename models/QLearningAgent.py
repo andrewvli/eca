@@ -62,14 +62,22 @@ class QLearningAgent:
         # iI the state not yet in the Q-table, initialize it with zeros for all steering actions
         if state not in self.q_table:
             q_dict = {}
-            for steering in STEERING_ACTIONS:
+            for steering in STEERING_ADJUSTMENTS:
                 q_dict[steering] = 0.0
             self.q_table[state] = q_dict
         
         return self.q_table[state]
     
 
-    def get_valid_actions(self, current_steering):
+    def get_valid_actions(self, current_steering_bin):
+        """
+        Based on current steering angle, extract only valid relative angle adjustments.
+        Returns: List of all valid adjustments to the current angle.
+        """
+        # Convert from current_steering_bin back to the actual angle
+        angle_bins = [-0.25, -0.20, -0.15, -0.10, -0.05, 0.0, 0.05, 0.10, 0.15, 0.20, 0.25]
+        current_steering = angle_bins[current_steering_bin]
+
         return [action for action in STEERING_ADJUSTMENTS if MIN_ANGLE <= current_steering + action <= MAX_ANGLE]
     
 
@@ -82,20 +90,17 @@ class QLearningAgent:
         """
         q_values = self.get_q_values(state)
         
-        # TODO: change this to use the discretized steering bins
-        # valid_actions = self.get_valid_actions(current_steering[STEERING_BIN_IDX])
-        # masked_q_values = {a: q_values[a] for a in valid_actions}
+        valid_actions = self.get_valid_actions(state[STEERING_BIN_IDX])
+        masked_q_values = {a: q_values[a] for a in valid_actions}
         
-        if random.random() < self.epsilon: # Explore random action
+        if random.random() < self.epsilon: # Explore random valid action
             self.explore_count += 1
-            steering = random.choice(STEERING_ACTIONS)
-            # TODO: if implementing relative steering, change the random.choice to valid_actions
+            steering = random.choice(valid_actions)
             return steering
         
         else: # Exploit best action
             self.exploit_count += 1
-            best_action = max(q_values.items(), key=lambda x: x[1])
-            # TODO: if implementing relative steering, change the q_values.items() to masked_q_values.items()
+            best_action = max(masked_q_values.items(), key=lambda x: x[1])
             return best_action[0] 
     
 
@@ -108,14 +113,10 @@ class QLearningAgent:
         next_q_values = self.get_q_values(next_state)
 
         # Mask invalid next actions
-        # valid_next_actions = self.get_valid_actions(next_state[STEERING_BIN_INDEX])
-        
-        # TODO: uncomment these lines when 
-        # next_q_values = self.get_q_values(next_state)
-        # max_next_q = max(next_q_values[a] for a in valid_next_actions)
+        valid_next_actions = self.get_valid_actions(next_state[STEERING_BIN_IDX])
         
         current_q = q_values[action]
-        max_next_q = max(next_q_values.values())
+        max_next_q = max(next_q_values[a] for a in valid_next_actions)
         new_q = current_q + ALPHA * (reward + GAMMA * max_next_q - current_q)
 
         q_values[action] = new_q
