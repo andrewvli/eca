@@ -1,0 +1,5 @@
+TODO
+- Respawn at random location and orientation
+- State: get rid of radar, imu, camera_position_z_bin
+- Action:
+- Mask actions when at the boundary

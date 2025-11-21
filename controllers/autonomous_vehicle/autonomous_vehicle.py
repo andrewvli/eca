@@ -5,8 +5,14 @@ import random
 import pickle
 import os
 import time
+import sys
 
-TIME_STEP = 25
+# Add parent directories to Python path so we can import constants and models
+# Webots runs controllers from their directory, so we need to go up two levels
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from constants import *
+from models.QLearningAgent import QLearningAgent
+
 enable_display = False
 has_gps = False
 
@@ -17,20 +23,6 @@ gps_speed = 0.0
 # misc variables
 steering_angle = 0.0
 
-# Starting position for reset
-START_POS_X = -0.613659
-START_POS_Y = -0.0464224
-START_POS_Z = 0.0975
-START_ROT_X = 0.0
-START_ROT_Y = 0.0
-START_ROT_Z = -1
-START_ROT_ANGLE = 5.12323
-SPEED = 25.0
-
-# GPS stuck detection
-GPS_STUCK_TIMEOUT = 5.0  # Reset if position doesn't change in 3 seconds
-GPS_POSITION_THRESHOLD = 0.5  # Minimum distance change (in meters) to consider movement
-
 # Static variables for GPS stuck detection
 last_gps_position = None
 last_gps_position_time = -1.0
@@ -40,17 +32,29 @@ gps_stuck_reset_pending = False
 supervisor = None
 is_supervisor = False
 
+
+speedometer_image = robot = driver = display = camera = gps = front_radar = imu = roof_lidar = None
+touch_front_center = touch_front_left = touch_front_right = None
+touch_rear_center = touch_rear_left = touch_rear_right = None
+q_agent = None
+
 # =====================================================================
 # DRIVING HELPER FUNCTIONS
 # =====================================================================
 def set_speed(kmh):
     """
-    Set the target speed of the vehicle.
+    Set the target speed of the vehicle. Relies on a globally defined 'Driver' object
     """
     if kmh > 250.0:
         kmh = 250.0
     driver.setCruisingSpeed(kmh)
 
+def start_engine(): 
+    driver.setHazardFlashers(True)
+    driver.setDippedBeams(True)
+    driver.setAntifogLights(True)
+    driver.setWiperMode(Driver.SLOW)
+    set_speed(SPEED)  # Set initial speed to 50 km/h
 
 def set_steering_angle(wheel_angle):
     """
@@ -71,7 +75,6 @@ def set_steering_angle(wheel_angle):
     elif wheel_angle < -0.25:
         wheel_angle = -0.25
     driver.setSteeringAngle(wheel_angle)
-
 
 def update_display():
     global speedometer_image
@@ -98,7 +101,6 @@ def update_display():
     txt = f"GPS speed:  {gps_speed:.1f}"
     display.drawText(txt, 10, 140)
 
-
 def compute_gps_speed():
     global gps_speed, gps_coords
     coords = gps.getValues()
@@ -106,7 +108,6 @@ def compute_gps_speed():
     # store into global variables
     gps_speed = speed_ms * 3.6  # convert from m/s to km/h
     gps_coords = list(coords)
-
 
 def check_gps_stuck(sim_time):
     """
@@ -155,7 +156,6 @@ def check_gps_stuck(sim_time):
     
     return False
 
-
 def reset_vehicle_position():
     """
     Reset the vehicle to the starting position with zero velocity.
@@ -193,7 +193,6 @@ def reset_vehicle_position():
 
     # print("Vehicle reset to starting position (zero velocity, zero steering, speed reset to constant)")
 
-
 def check_collisions(sim_time):
     """
     Check for collisions and handle reset immediately.
@@ -222,38 +221,9 @@ def check_collisions(sim_time):
     
     return collision_detected
 
-
-# =====================================================================
-# COLLISION AVOIDANCE (USING Q-LEARNING)
-# =====================================================================
-
-# Q-Learning hyperparameters
-ALPHA = 0.1  # Learning rate
-GAMMA = 0.9  # Discount factor
-
-# Exploration with decay
-EPSILON_START = 0.3 
-EPSILON_DECAY = 0.9995 
-EPSILON_MIN = 0.05  
-
-# DISCRETIZE ACTION SPACE (STEERING ONLY) - 11 possible actions
-STEERING_ACTIONS = [-0.25, -0.20, -0.15, -0.10, -0.05, 0.0, 0.05, 0.10, 0.15, 0.20, 0.25]  # 11 steering options (increments of 0.05, max 0.25 in either direction)
-
-# DISCRETIZE STATE SPACE (LIDAR, RADAR, IMU, CAMERA)
-LIDAR_BINS = 10  # Distance bins: 0-2m, 2-5m, 5-10m, 10-20m, 20-30m, 30-50m, 50-70m, 70-90m, 90-100m, >100m
-IMU_YAW_BINS = 8  # Yaw angle bins (8 directions)
-CAMERA_OBJECT_COUNT_BINS = 10  # 0-9 objects
-
-# Reward parameters
-REWARD_COLLISION = -1000
-REWARD_NO_COLLISION = 1
-REWARD_DISTANCE_SCALE = 0.1 
-MIN_SAFE_DISTANCE = 3
-MAX_REWARD_DISTANCE = 10
-
-# Save Q values
-Q_TABLE_FILE = "q_table.pkl"
-
+# ====================================
+#  FEATURE EXTRACTION START
+# ====================================
 
 def extract_lidar_features(lidar_sensor):
     """
@@ -388,6 +358,14 @@ def extract_camera_features(camera_sensor):
         print(f"Error extracting camera features: {e}")
         return (0, 100.0, 0.0, 0.0)
 
+# ====================================
+#  FEATURE EXTRACTION END
+# ====================================
+
+
+# ====================================
+#  DISCRETIZE START
+# ====================================
 
 def discretize_distance(distance, max_range=100.0):
     """
@@ -486,6 +464,9 @@ def discretize_camera_position(position):
     else:
         return 4
 
+# ====================================
+#  DISCRETIZE END
+# ====================================
 
 def get_state(lidar_sensor, radar_sensor, current_steering, imu_sensor=None, camera_sensor=None):
     """
@@ -522,7 +503,6 @@ def get_state(lidar_sensor, radar_sensor, current_steering, imu_sensor=None, cam
     
     return (lidar_front_bin, lidar_left_bin, lidar_right_bin, radar_bin, steering_bin,
             imu_yaw_bin, camera_object_count_bin, camera_distance_bin, camera_pos_x_bin, camera_pos_z_bin)
-
 
 def get_reward(collision_detected, lidar_front=None, lidar_left=None, lidar_right=None, radar_distance=None):
     """
@@ -561,326 +541,226 @@ def get_reward(collision_detected, lidar_front=None, lidar_left=None, lidar_righ
     
     return reward
 
-
-class QLearningAgent:
+# ====================================
+#  EXECUTION START
+# ====================================
+def init_scene_and_sensors():
     """
-    Q-Learning agent for collision avoidance.
+    returns all of the sensors so that they are usable
     """
-    def __init__(self):
-        self.q_table = {}  # { (lidar_front_bin, lidar_left_bin, lidar_right_bin, radar_bin, steering_bin, imu_yaw_bin, camera_object_count_bin, camera_distance_bin, camera_pos_x_bin, camera_pos_z_bin) : { steering_angle : q_value } }
-        self.epsilon = EPSILON_START
-        self.last_state = None
-        self.last_action = None 
-        # Learning statistics
-        self.episode_count = 0
-        self.step_count = 0
-        self.total_reward = 0.0
-        self.episode_reward = 0.0
-        self.episode_steps = 0
-        self.q_updates_count = 0
-        self.explore_count = 0
-        self.exploit_count = 0
-        self.load_q_table()
+    global robot, driver, display, camera, gps, front_radar, imu, roof_lidar, supervisor, is_supervisor, enable_display, has_gps
+    global touch_front_center, touch_front_left, touch_front_right, touch_rear_center, touch_rear_left, touch_rear_right
+    global q_agent
     
-    def load_q_table(self):
-        """Load Q-learning progress from file if it exists."""
-        if os.path.exists(Q_TABLE_FILE):
-            try:
-                with open(Q_TABLE_FILE, 'rb') as f:
-                    self.q_table = pickle.load(f)
-                print(f"Loaded Q-table with {len(self.q_table)} states")
-            except Exception as e:
-                print(f"Error loading Q-table: {e}")
-                self.q_table = {}
-        else:
-            print("No existing Q-table found, starting fresh")
+    # Check if robot is a supervisor first
+    try:
+        robot = Supervisor()
+        supervisor = robot
+        is_supervisor = True
+    except:
+        robot = Robot()
+        supervisor = None
+        is_supervisor = False
     
-    def save_q_table(self):
-        """Save Q-learning progress to file."""
-        try:
-            with open(Q_TABLE_FILE, 'wb') as f:
-                pickle.dump(self.q_table, f)
-            print(f"Saved Q-table with {len(self.q_table)} states")
-        except Exception as e:
-            print(f"Error saving Q-table: {e}")
-    
-    def get_q_values(self, state):
-        """
-        Get Q-values for a state, initializing if necessary.
-        Returns: dictionary mapping steering angles to Q-values
-        """
-        # iI the state not yet in the Q-table, initialize it with zeros for all steering actions
-        if state not in self.q_table:
-            q_dict = {}
-            for steering in STEERING_ACTIONS:
-                q_dict[steering] = 0.0
-            self.q_table[state] = q_dict
-        
-        return self.q_table[state]
-    
-    def select_action(self, state):
-        """
-        Select action using epsilon-greedy policy.
-        With probability epsilon, explore (random action).
-        With probability 1-epsilon, exploit (best action).
-        Returns: steering angle (float)
-        """
-        q_values = self.get_q_values(state)
-        
-        if random.random() < self.epsilon: # Explore random action
-            self.explore_count += 1
-            steering = random.choice(STEERING_ACTIONS)
-            return steering
-        
-        else: # Exploit best action
-            self.exploit_count += 1
-            best_action = max(q_values.items(), key=lambda x: x[1])
-            return best_action[0] 
-    
-    def update(self, state, action, reward, next_state):
-        """
-        Update Q-value using Q-learning update rule.
-        action: steering angle (float)
-        """
-        q_values = self.get_q_values(state)
-        next_q_values = self.get_q_values(next_state)
-        
-        current_q = q_values[action]
-        max_next_q = max(next_q_values.values())
-        new_q = current_q + ALPHA * (reward + GAMMA * max_next_q - current_q)
+    driver = Driver()
 
-        q_values[action] = new_q
-        self.q_updates_count += 1
-        self.episode_reward += reward
-        self.total_reward += reward
-        
-        # Print learning progress every N updates
-        if self.q_updates_count % 100 == 0:
-            avg_q = sum(q_values.values()) / len(q_values) if q_values else 0.0
-            max_q = max(q_values.values()) if q_values else 0.0
-            explore_rate = self.explore_count / (self.explore_count + self.exploit_count) * 100 if (self.explore_count + self.exploit_count) > 0 else 0.0
-            print(f"[Learning] Updates: {self.q_updates_count}, States: {len(self.q_table)}, "
-                  f"Epsilon: {self.epsilon:.4f}, Explore: {explore_rate:.1f}%, "
-                  f"Avg Q: {avg_q:.2f}, Max Q: {max_q:.2f}, "
-                  f"Q-change: {new_q - current_q:.3f}, Reward: {reward:.2f}")
-    
-    def decay_epsilon(self):
-        """
-        Decay the exploration rate (explore less often as iterations go on).
-        """
-        self.epsilon = max(EPSILON_MIN, self.epsilon * EPSILON_DECAY)
+    # check if there is a display
+    for j in range(robot.getNumberOfDevices()):
+        device = robot.getDeviceByIndex(j)
+        name = device.getName()
+        if name == "display":
+            enable_display = True
 
-
-# =====================================================================
-# INIT SCENE AND SENSORS
-# =====================================================================
-robot = Robot()
-driver = Driver()
-# Check if robot is a supervisor
-try:
-    supervisor = Supervisor()
-    is_supervisor = True
-except:
-    supervisor = None
-    is_supervisor = False
-
-# check if there is a display
-for j in range(robot.getNumberOfDevices()):
-    device = robot.getDeviceByIndex(j)
-    name = device.getName()
-    if name == "display":
-        enable_display = True
-
-# Initialize camera
-camera = robot.getDevice("camera")
-if camera:
-    camera.enable(TIME_STEP)
-    # Enable camera recognition
-    camera.recognitionEnable(TIME_STEP)
-    print("Camera initialized (recognition enabled)")
-else:
-    print("Camera not available")
-
-# Initialize GPS (always available in this world)
-gps = robot.getDevice("gps")
-gps.enable(TIME_STEP)
-has_gps = True
-print("GPS initialized")
-
-# initialize display (speedometer)
-if enable_display:
-    display = robot.getDevice("display")
-    if display:
-        try:
-            speedometer_image = display.imageLoad("speedometer.png")
-            if speedometer_image:
-                print("Display initialized with speedometer image")
-            else:
-                print("Warning: Could not load speedometer.png image")
-                speedometer_image = None
-        except Exception as e:
-            print(f"Warning: Error loading speedometer image: {e}")
-            speedometer_image = None
+    # Initialize camera
+    camera = robot.getDevice("camera")
+    if camera:
+        camera.enable(TIME_STEP)
+        # Enable camera recognition
+        camera.recognitionEnable(TIME_STEP)
+        print("Camera initialized (recognition enabled)")
     else:
-        print("Warning: Display device not found")
-else:
-    print("Display not available")
+        print("Camera not available")
 
-# Initialize Radar
-front_radar = robot.getDevice("front_radar")
-if front_radar:
-    front_radar.enable(TIME_STEP)
-    print("Radar initialized")
-else:
-    print("Radar not available")
+    # Initialize GPS (always available in this world)
+    gps = robot.getDevice("gps")
+    gps.enable(TIME_STEP)
+    has_gps = True
+    print("GPS initialized")
 
-# Initialize Touch Sensors
-touch_front_center = robot.getDevice("touch_front_center")
-touch_front_left = robot.getDevice("touch_front_left")
-touch_front_right = robot.getDevice("touch_front_right")
-touch_rear_center = robot.getDevice("touch_rear_center")
-touch_rear_left = robot.getDevice("touch_rear_left")
-touch_rear_right = robot.getDevice("touch_rear_right")
+    # initialize display (speedometer)
+    if enable_display:
+        display = robot.getDevice("display")
+        if display:
+            try:
+                speedometer_image = display.imageLoad("speedometer.png")
+                if speedometer_image:
+                    print("Display initialized with speedometer image")
+                else:
+                    print("Warning: Could not load speedometer.png image")
+                    speedometer_image = None
+            except Exception as e:
+                print(f"Warning: Error loading speedometer image: {e}")
+                speedometer_image = None
+        else:
+            print("Warning: Display device not found")
+    else:
+        print("Display not available")
 
-if touch_front_center:
-    touch_front_center.enable(TIME_STEP)
-if touch_front_left:
-    touch_front_left.enable(TIME_STEP)
-if touch_front_right:
-    touch_front_right.enable(TIME_STEP)
-if touch_rear_center:
-    touch_rear_center.enable(TIME_STEP)
-if touch_rear_left:
-    touch_rear_left.enable(TIME_STEP)
-if touch_rear_right:
-    touch_rear_right.enable(TIME_STEP)
+    # Initialize Radar
+    front_radar = robot.getDevice("front_radar")
+    if front_radar:
+        front_radar.enable(TIME_STEP)
+        print("Radar initialized")
+    else:
+        print("Radar not available")
 
-# Log initialized sensors
-touch_sensor_names = [
-    "touch_front_center", "touch_front_left", "touch_front_right",
-    "touch_rear_center", "touch_rear_left", "touch_rear_right"
-]
-touch_sensors = [
-    touch_front_center, touch_front_left, touch_front_right,
-    touch_rear_center, touch_rear_left, touch_rear_right
-]
-for i in range(6):
-    if touch_sensors[i]:
-        print(f"Touch sensor initialized: {touch_sensor_names[i]}")
+    # Initialize Touch Sensors
+    touch_front_center = robot.getDevice("touch_front_center")
+    touch_front_left = robot.getDevice("touch_front_left")
+    touch_front_right = robot.getDevice("touch_front_right")
+    touch_rear_center = robot.getDevice("touch_rear_center")
+    touch_rear_left = robot.getDevice("touch_rear_left")
+    touch_rear_right = robot.getDevice("touch_rear_right")
 
-# Initialize Inertial Unit (IMU)
-imu = robot.getDevice("imu")
-if imu:
-    imu.enable(TIME_STEP)
-    print("IMU initialized")
-else:
-    print("IMU not available")
+    if touch_front_center:
+        touch_front_center.enable(TIME_STEP)
+    if touch_front_left:
+        touch_front_left.enable(TIME_STEP)
+    if touch_front_right:
+        touch_front_right.enable(TIME_STEP)
+    if touch_rear_center:
+        touch_rear_center.enable(TIME_STEP)
+    if touch_rear_left:
+        touch_rear_left.enable(TIME_STEP)
+    if touch_rear_right:
+        touch_rear_right.enable(TIME_STEP)
 
-# Initialize Roof Lidar
-roof_lidar = robot.getDevice("roof_lidar")
-if roof_lidar:
-    roof_lidar.enable(TIME_STEP)
-    print("Roof Lidar initialized")
-else:
-    print("Roof Lidar not available")
+    # Log initialized sensors
+    touch_sensor_names = [
+        "touch_front_center", "touch_front_left", "touch_front_right",
+        "touch_rear_center", "touch_rear_left", "touch_rear_right"
+    ]
+    touch_sensors = [
+        touch_front_center, touch_front_left, touch_front_right,
+        touch_rear_center, touch_rear_left, touch_rear_right
+    ]
+    for i in range(6):
+        if touch_sensors[i]:
+            print(f"Touch sensor initialized: {touch_sensor_names[i]}")
 
-# start engine
-driver.setHazardFlashers(True)
-driver.setDippedBeams(True)
-driver.setAntifogLights(True)
-driver.setWiperMode(Driver.SLOW)
-set_speed(SPEED)  # Set initial speed to 50 km/h
+    # Initialize Inertial Unit (IMU)
+    imu = robot.getDevice("imu")
+    if imu:
+        imu.enable(TIME_STEP)
+        print("IMU initialized")
+    else:
+        print("IMU not available")
 
-# Initialize Q-Learning agent
-q_agent = QLearningAgent()
-print("Q-Learning agent initialized")
+    # Initialize Roof Lidar
+    roof_lidar = robot.getDevice("roof_lidar")
+    if roof_lidar:
+        roof_lidar.enable(TIME_STEP)
+        print("Roof Lidar initialized")
+    else:
+        print("Roof Lidar not available")
 
+    # start engine
+    start_engine()
 
+    # Initialize agent
+    q_agent = QLearningAgent()
 
-# =====================================================================
-# MAIN CONTROLLER LOOP
-# =====================================================================
-i = 0
-last_q_save_time = 0.0
-Q_SAVE_INTERVAL = 60.0  # Save Q-table every 60 seconds
+    # Return touch sensors list for convenience (all devices are now global)
+    touch_sensors = [
+        touch_front_center, touch_front_left, touch_front_right,
+        touch_rear_center, touch_rear_left, touch_rear_right
+    ]
+    return touch_sensors
 
-while driver.step() != -1:
-    # updates sensors only every time step
-    if i % int(TIME_STEP / robot.getBasicTimeStep()) == 0:
-        sim_time = robot.getTime()
-        
-        # update stuff
-        if has_gps:
-            compute_gps_speed()
-            # Check if vehicle is stuck (hasn't moved in 3 seconds)
-            # NOTE: THIS IS IMPORTANT
-            gps_stuck = check_gps_stuck(sim_time)
-        if enable_display:
-            update_display()
+def main():
+    i = 0
+    last_q_save_time = 0.0
+    Q_SAVE_INTERVAL = 60.0  # Save Q-table every 60 seconds
 
-        # Check for collisions
-
-        # NOTE: THISI SI IMPORTANT
-        collision_detected = check_collisions(sim_time)
-        
-        # Q-Learning collision avoidance
-        if roof_lidar and front_radar:
-            # Get current state (speed is constant, so not included in state)
-            current_state = get_state(roof_lidar, front_radar, steering_angle, imu, camera) # S
-
-            # Extract sensor distances for reward calculation
-            lidar_front, lidar_left, lidar_right = extract_lidar_features(roof_lidar)
-            radar_distance = extract_radar_features(front_radar)
+    # main controller loop
+    while driver.step() != -1:
+        # updates sensors only every time step
+        if i % int(TIME_STEP / robot.getBasicTimeStep()) == 0:
+            sim_time = robot.getTime()
             
-            # If we have a previous state and action, update Q-table
-            if q_agent.last_state is not None and q_agent.last_action is not None:
-                reward = get_reward(collision_detected, lidar_front, lidar_left, lidar_right, radar_distance)
-                q_agent.update(q_agent.last_state, q_agent.last_action, reward, current_state)
+            # update stuff
+            if has_gps:
+                compute_gps_speed()
+                # Check if vehicle is stuck (hasn't moved in 3 seconds)
+                gps_stuck = check_gps_stuck(sim_time)
+            if enable_display:
+                update_display()
+
+            # Check for collisions
+
+            collision_detected = check_collisions(sim_time)
             
-            # Select new action (unless GPS stuck reset is pending)
-            if not gps_stuck_reset_pending and not collision_detected:
-                steering_angle_new = q_agent.select_action(current_state)  # Returns steering angle
+            # Q-Learning collision avoidance
+            if roof_lidar and front_radar:
+                # Get current state (speed is constant, so not included in state)
+                current_state = get_state(roof_lidar, front_radar, steering_angle, imu, camera) # S
+
+                # Extract sensor distances for reward calculation
+                lidar_front, lidar_left, lidar_right = extract_lidar_features(roof_lidar)
+                radar_distance = extract_radar_features(front_radar)
                 
-                # Execute action - only steering, speed stays constant
-                set_steering_angle(steering_angle_new)
-                # Speed remains constant at SPEED
+                # If we have a previous state and action, update Q-table
+                if q_agent.last_state is not None and q_agent.last_action is not None:
+                    reward = get_reward(collision_detected, lidar_front, lidar_left, lidar_right, radar_distance)
+                    q_agent.update(q_agent.last_state, q_agent.last_action, reward, current_state)
                 
-                # Store state and action for next update
-                q_agent.last_state = current_state
-                q_agent.last_action = steering_angle_new  # Store steering angle
-                q_agent.episode_steps += 1
-                q_agent.step_count += 1
+                # Select new action (unless GPS stuck reset is pending)
+                if not gps_stuck_reset_pending and not collision_detected:
+                    steering_angle_new = q_agent.select_action(current_state)  # Returns steering angle
+                    
+                    # Execute action - only steering, speed stays constant
+                    set_steering_angle(steering_angle_new)
+                    # Speed remains constant at SPEED
+                    
+                    # Store state and action for next update
+                    q_agent.last_state = current_state
+                    q_agent.last_action = steering_angle_new  # Store steering angle
+                    q_agent.episode_steps += 1
+                    q_agent.step_count += 1
+                    
+                    # Decay exploration rate
+                    q_agent.decay_epsilon()
+                else:
+                    # Reset Q-learning episode on collision or GPS stuck reset
+                    if q_agent.episode_steps > 0:
+                        q_agent.episode_count += 1
+                        avg_episode_reward = q_agent.episode_reward / q_agent.episode_steps if q_agent.episode_steps > 0 else 0.0
+                        print(f"[Episode {q_agent.episode_count}] Steps: {q_agent.episode_steps}, "
+                            f"Total Reward: {q_agent.episode_reward:.2f}, Avg Reward/Step: {avg_episode_reward:.3f}")
+                    q_agent.last_state = None
+                    q_agent.last_action = None
+                    q_agent.episode_reward = 0.0
+                    q_agent.episode_steps = 0
                 
-                # Decay exploration rate
-                q_agent.decay_epsilon()
-            else:
-                # Reset Q-learning episode on collision or GPS stuck reset
-                if q_agent.episode_steps > 0:
-                    q_agent.episode_count += 1
-                    avg_episode_reward = q_agent.episode_reward / q_agent.episode_steps if q_agent.episode_steps > 0 else 0.0
-                    print(f"[Episode {q_agent.episode_count}] Steps: {q_agent.episode_steps}, "
-                          f"Total Reward: {q_agent.episode_reward:.2f}, Avg Reward/Step: {avg_episode_reward:.3f}")
-                q_agent.last_state = None
-                q_agent.last_action = None
-                q_agent.episode_reward = 0.0
-                q_agent.episode_steps = 0
-            
-            # Save Q-table periodically
-            if sim_time - last_q_save_time >= Q_SAVE_INTERVAL:
-                q_agent.save_q_table()
-                last_q_save_time = sim_time
-                explore_rate = q_agent.explore_count / (q_agent.explore_count + q_agent.exploit_count) * 100 if (q_agent.explore_count + q_agent.exploit_count) > 0 else 0.0
-                avg_reward = q_agent.total_reward / q_agent.q_updates_count if q_agent.q_updates_count > 0 else 0.0
-                print(f"[Periodic Save] Epsilon: {q_agent.epsilon:.4f}, Q-table size: {len(q_agent.q_table)}, "
-                      f"Episodes: {q_agent.episode_count}, Updates: {q_agent.q_updates_count}, "
-                      f"Explore rate: {explore_rate:.1f}%, Avg reward: {avg_reward:.3f}")
+                # Save Q-table periodically
+                if sim_time - last_q_save_time >= Q_SAVE_INTERVAL:
+                    q_agent.save_q_table()
+                    last_q_save_time = sim_time
+                    explore_rate = q_agent.explore_count / (q_agent.explore_count + q_agent.exploit_count) * 100 if (q_agent.explore_count + q_agent.exploit_count) > 0 else 0.0
+                    avg_reward = q_agent.total_reward / q_agent.q_updates_count if q_agent.q_updates_count > 0 else 0.0
+                    print(f"[Periodic Save] Epsilon: {q_agent.epsilon:.4f}, Q-table size: {len(q_agent.q_table)}, "
+                        f"Episodes: {q_agent.episode_count}, Updates: {q_agent.q_updates_count}, "
+                        f"Explore rate: {explore_rate:.1f}%, Avg reward: {avg_reward:.3f}")
 
-    i += 1
+        i += 1
 
-# Save Q-table on exit
-if roof_lidar and front_radar:
-    q_agent.save_q_table()
-    print("Final Q-table saved on exit")
+    # Save Q-table on exit
+    if roof_lidar and front_radar:
+        q_agent.save_q_table()
+        print("Final Q-table saved on exit")
 
-driver.cleanup()
+    driver.cleanup()
 
+# Execution
+touch_sensors = init_scene_and_sensors()  # All devices are now global variables
+main()
