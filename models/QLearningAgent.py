@@ -100,8 +100,12 @@ class QLearningAgent:
         
         else: # Exploit best action
             self.exploit_count += 1
-            best_action = max(masked_q_values.items(), key=lambda x: x[1])
-            return best_action[0] 
+            # Find the maximum Q-value
+            max_q_value = max(masked_q_values.values())
+            # Get all actions with the maximum Q-value (handle ties)
+            best_actions = [action for action, q_val in masked_q_values.items() if q_val == max_q_value]
+            # Randomly select among the best actions to break ties
+            return random.choice(best_actions) 
     
 
     def update(self, state, action, reward, next_state):
